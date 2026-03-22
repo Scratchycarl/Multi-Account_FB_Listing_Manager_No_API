@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm p-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Facebook Marketplace Listings</h2>
+        <div class="btn-group">
+            <button id="scrapeBtn" class="btn btn-primary">Run Scraper for All Accounts</button>
+            <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+                <span class="visually-hidden">Toggle Dropdown</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end p-3 shadow" style="min-width: 250px;">
+                <li><h6 class="dropdown-header px-0">Select specific accounts:</h6></li>
+                {% for account in accounts %}
+                <li>
+                    <div class="form-check">
+                        <input class="form-check-input account-checkbox" type="checkbox" value="{{ account }}" id="check_{{ account }}">
+                        <label class="form-check-label w-100" for="check_{{ account }}">{{ account }}</label>
+                    </div>
+                </li>
+                {% endfor %}
+                <li><hr class="dropdown-divider"></li>
+                <li><button id="scrapeSelectedBtn" class="btn btn-sm btn-success w-100">Scrape Selected</button></li>
+            </ul>
+        </div>
+    </div>
+    
+    <div id="statusAlert" class="alert alert-info d-none"></div>
+
+    <div id="progressContainer" class="card p-3 mb-4 d-none border-primary">
+        <h5 id="progressText" class="text-primary mb-2">Starting scraper...</h5>
+        <div class="progress" style="height: 25px;">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; font-weight: bold;">0%</div>
+        </div>
+    </div>
+
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Image</th>
+                <th>Account</th>
+                <th>Title</th>
+                <th>Price</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for listing in listings %}
+            <tr>
+                <td>
+                    {% if listing[4] %}
+                        <img src="{{ listing[4] }}" class="listing-img" alt="Item Image">
+                    {% else %}
+                        <div class="listing-img bg-secondary d-flex align-items-center justify-content-center text-white">No Img</div>
+                    {% endif %}
+                </td>
+                <td class="align-middle"><span class="badge bg-secondary">{{ listing[0] }}</span></td>
+                <td class="align-middle">{{ listing[1] }}</td>
+                <td class="align-middle fw-bold">{{ listing[2] }}</td>
+                <td class="align-middle">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary view-btn" data-account="{{ listing[0] }}" data-url="{{ listing[3] }}">View</button>
+                        <button class="btn btn-sm btn-danger mark-oos-btn" data-account="{{ listing[0] }}" data-url="{{ listing[3] }}">Mark Sold</button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center">No listings found. Run the scraper to populate data!</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function pollScrapeStatus() {
+        fetch('/api/scrape_status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.is_scraping) {
+                    document.getElementById('progressContainer').classList.remove('d-none');
+                    document.getElementById('progressText').innerText = data.message;
+                    
+                    let pct = data.total > 0 ? (data.progress / data.total) * 100 : 0;
+                    if (data.progress === 0 && data.total > 0) pct = 5; // Give it a little bump so user sees it started
+                    
+                    const bar = document.getElementById('progressBar');
+                    bar.style.width = pct + '%';
+                    bar.innerText = Math.round(pct) + '%';
+                    
+                    setTimeout(pollScrapeStatus, 1500); // Check again in 1.5 seconds
+                } else {
+                    // Not scraping anymore. Reload the page to show new listings!
+                    location.reload();
+                }
+            })
+            .catch(err => console.error(err));
+    }
+
+    function startScraping(accountsList = null, btnEl) {
+        btnEl.disabled = true;
+        const originalText = btnEl.innerText;
+        btnEl.innerText = 'Scraping...';
+        
+        const payload = accountsList ? { accounts: accountsList } : {};
+        
+        fetch('/scrape', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Immediately start polling the status endpoint
+            pollScrapeStatus();
+        })
+        .catch(err => {
+            console.error(err);
+            btnEl.disabled = false;
+            btnEl.innerText = originalText;
+        });
+    }
+
+    document.getElementById('scrapeBtn').addEventListener('click', function() {
+        startScraping(null, this);
+    });
+
+    document.getElementById('scrapeSelectedBtn').addEventListener('click', function() {
+        const selected = Array.from(document.querySelectorAll('.account-checkbox:checked')).map(cb => cb.value);
+        if (selected.length === 0) {
+            alert("Please select at least one account.");
+            return;
+        }
+        
+        // Hide the dropdown menu nicely before starting
+        const dropdownMenu = this.closest('.dropdown-menu');
+        const bsDropdown = bootstrap.Dropdown.getInstance(document.querySelector('.dropdown-toggle'));
+        if (bsDropdown) bsDropdown.hide();
+        
+        startScraping(selected, this);
+    });
+
+    document.querySelectorAll('.view-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const btn = this;
+            const accountId = btn.getAttribute('data-account');
+            const url = btn.getAttribute('data-url');
+            
+            // Check if user is accessing via localhost/127.0.0.1 (host machine)
+            const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+            
+            if (!isLocal) {
+                // Remote device: open a normal browser tab (or trigger native app)
+                // We open it in a new window, then attempt to close that blank window shortly after 
+                // in case it successfully deep-linked out to the native Facebook app (like on iPad/iOS).
+                const newWin = window.open(url, '_blank');
+                setTimeout(() => {
+                    if (newWin && !newWin.closed) {
+                        newWin.close();
+                    }
+                }, 1500);
+                return;
+            }
+            
+            // Host machine: spawn the Playwright browser
+            btn.disabled = true;
+            btn.innerText = 'Opening...';
+
+            fetch('/action/view', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_id: accountId, url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerText = 'View';
+                }, 1500);
+            })
+            .catch(err => {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerText = 'View';
+            });
+        });
+    });
+
+    document.querySelectorAll('.mark-oos-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const btn = this;
+            const accountId = btn.getAttribute('data-account');
+            const url = btn.getAttribute('data-url');
+            
+            btn.disabled = true;
+            btn.innerText = 'Processing...';
+
+            fetch('/action/out_of_stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_id: accountId, url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    btn.classList.replace('btn-danger', 'btn-success');
+                    btn.innerText = 'Sold!';
+                } else {
+                    btn.disabled = false;
+                    btn.innerText = 'Mark Sold';
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerText = 'Mark Sold';
+            });
+        });
+    });
+</script>
+{% endblock %}

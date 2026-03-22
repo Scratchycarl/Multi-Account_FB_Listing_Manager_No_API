@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm p-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Marketplace Insights</h2>
+        <div class="d-flex align-items-center gap-2">
+            <select id="timePeriod" class="form-select bg-light fw-bold" style="width: 140px;">
+                <option value="Last 7 days" selected>Last 7 days</option>
+                <option value="Last 14 days">Last 14 days</option>
+                <option value="Last 30 days">Last 30 days</option>
+            </select>
+            <div class="btn-group">
+                <button id="scrapeInsightsBtn" class="btn btn-primary">Refresh All</button>
+                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+                    <span class="visually-hidden">Toggle Dropdown</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end p-3 shadow" style="min-width: 250px;">
+                    <li><h6 class="dropdown-header px-0">Select specific accounts:</h6></li>
+                    {% for account in accounts %}
+                    <li>
+                        <div class="form-check">
+                            <input class="form-check-input account-checkbox" type="checkbox" value="{{ account }}" id="check_{{ account }}">
+                            <label class="form-check-label w-100" for="check_{{ account }}">{{ account }}</label>
+                        </div>
+                    </li>
+                    {% endfor %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button id="scrapeSelectedInsightsBtn" class="btn btn-sm btn-success w-100">Refresh Selected</button></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div id="progressContainer" class="card p-3 mb-4 d-none border-primary">
+        <h5 id="progressText" class="text-primary mb-2">Starting insights pull...</h5>
+        <div class="progress" style="height: 25px;">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; font-weight: bold;">0%</div>
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for account, history in grouped_insights.items() %}
+        <div class="col">
+            <div class="card h-100 border-secondary">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ account }}</h5>
+                    <span class="badge bg-primary rounded-pill">{{ history|length }} record(s)</span>
+                </div>
+                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                    {% for row in history %}
+                    <div class="p-3 {% if not loop.last %}border-bottom{% endif %} {% if loop.first %}bg-light{% endif %}">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="badge bg-info text-dark">{{ row[5] }}</span>
+                            <small class="text-muted fw-bold">{{ row[6] }}</small>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">Clicks on listings:</span>
+                            <span class="fw-bold text-primary">{{ row[1] }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">Listing saves:</span>
+                            <span class="fw-bold text-success">{{ row[2] }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">Listing shares:</span>
+                            <span class="fw-bold text-warning">{{ row[3] }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted small">Followers:</span>
+                            <span class="fw-bold text-dark">{{ row[4] }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center text-muted mt-5">
+            <p>No insights found in the database. Hit the refresh button to pull them down!</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    function pollScrapeStatus() {
+        fetch('/api/scrape_status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.is_scraping) {
+                    document.getElementById('progressContainer').classList.remove('d-none');
+                    document.getElementById('progressText').innerText = data.message;
+                    
+                    let pct = data.total > 0 ? (data.progress / data.total) * 100 : 0;
+                    if (data.progress === 0 && data.total > 0) pct = 5;
+                    
+                    const bar = document.getElementById('progressBar');
+                    bar.style.width = pct + '%';
+                    bar.innerText = Math.round(pct) + '%';
+                    
+                    setTimeout(pollScrapeStatus, 1500);
+                } else {
+                    location.reload();
+                }
+            })
+            .catch(err => console.error(err));
+    }
+
+    function startScraping(accountsList = null, btnEl) {
+        btnEl.disabled = true;
+        const originalText = btnEl.innerText;
+        btnEl.innerText = 'Refreshing...';
+        
+        const selectedPeriod = document.getElementById('timePeriod').value;
+        const payload = accountsList ? { accounts: accountsList, period: selectedPeriod } : { period: selectedPeriod };
+        
+        fetch('/scrape_insights', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            pollScrapeStatus();
+        })
+        .catch(err => {
+            console.error(err);
+            btnEl.disabled = false;
+            btnEl.innerText = originalText;
+        });
+    }
+
+    document.getElementById('scrapeInsightsBtn').addEventListener('click', function() {
+        startScraping(null, this);
+    });
+
+    document.getElementById('scrapeSelectedInsightsBtn').addEventListener('click', function() {
+        const selected = Array.from(document.querySelectorAll('.account-checkbox:checked')).map(cb => cb.value);
+        if (selected.length === 0) {
+            alert("Please select at least one account.");
+            return;
+        }
+        
+        const dropdownMenu = this.closest('.dropdown-menu');
+        const bsDropdown = bootstrap.Dropdown.getInstance(document.querySelector('.dropdown-toggle'));
+        if (bsDropdown) bsDropdown.hide();
+        
+        startScraping(selected, this);
+    });
+</script>
+{% endblock %}

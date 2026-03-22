@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h3 class="card-title mb-4">Add New Account</h3>
+                <p class="text-muted">Enter a name for the new account. A browser window will pop up on the host computer. Log in, complete any 2FA, and then <strong>close the browser window</strong> to save the session.</p>
+                
+                <div class="input-group mb-3">
+                    <input type="text" id="accountName" class="form-control" placeholder="e.g. account1 or burner_a">
+                    <button class="btn btn-primary" type="button" id="addAccountBtn">Open Login Window</button>
+                </div>
+                <div id="addStatus" class="alert d-none"></div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title mb-4">Saved Accounts</h3>
+                <ul class="list-group">
+                    {% for account in accounts %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ account }}</strong>
+                            <span class="badge bg-success ms-2">Ready</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger delete-btn" data-account="{{ account }}">Delete Session</button>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-center text-muted">No accounts found. Please add one above.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('addAccountBtn').addEventListener('click', function() {
+    const accName = document.getElementById('accountName').value.trim();
+    if (!accName) {
+        alert("Please enter an account name first.");
+        return;
+    }
+
+    const btn = this;
+    const statusBox = document.getElementById('addStatus');
+    btn.disabled = true;
+    btn.innerText = "Opening...";
+
+    fetch('/api/accounts/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_name: accName })
+    })
+    .then(res => res.json())
+    .then(data => {
+        statusBox.classList.remove('d-none', 'alert-success', 'alert-danger');
+        if (data.success) {
+            statusBox.classList.add('alert-success');
+            statusBox.innerText = data.message;
+            // The user must manually refresh after they close the window to see it
+        } else {
+            statusBox.classList.add('alert-danger');
+            statusBox.innerText = "Error: " + data.message;
+        }
+        btn.disabled = false;
+        btn.innerText = "Open Login Window";
+    });
+});
+
+document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        if(!confirm('Delete this session and its listings?')) return;
+        
+        const account = this.getAttribute('data-account');
+        fetch('/api/accounts/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_name: account })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                location.reload();
+            } else {
+                alert("Error deleting account.");
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

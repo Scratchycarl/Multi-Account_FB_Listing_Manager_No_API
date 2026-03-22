@@ -1,0 +1,18 @@
+# Ignore Python compilation files
+__pycache__/
+*.py[cod]
+
+# Ignore database
+listings.db
+listings.db-journal
+
+# Ignore Facebook session files (EXTREMELY IMPORTANT - THESE CONTAIN COOKIES AND AUTH)
+*_state.json
+debug_*.png
+
+# Ignore virtual environments
+venv/
+.env
+
+# MacOS files
+.DS_Store

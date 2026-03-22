@@ -31,7 +31,7 @@ This tool allows you to seamlessly manage, view, scrape, and pull insights for m
 3. **Install Playwright Browsers:**
    Playwright requires its own specific browser binaries to run headless/headful automation.
    ```bash
-   playwright install chromium
+   python3 -m playwright install chromium
    ```
 
 4. **Run the App:**

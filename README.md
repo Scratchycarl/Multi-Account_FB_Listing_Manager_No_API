@@ -4,6 +4,14 @@ A powerful, multi-account Facebook Marketplace management dashboard built with F
 
 This tool allows you to seamlessly manage, view, scrape, and pull insights for multiple Facebook Marketplace seller accounts from a centralized, mobile-friendly web app on your local network.
 
+## Screenshots
+
+![Listings View](images/listings.png)
+
+![Insights View](images/insights.png)
+
+![Accounts & Config View](images/config.png)
+
 ## Features
 
 - **Multi-Account Support**: Add and manage as many Facebook burner/seller accounts as you need.
